@@ -5,7 +5,7 @@ import os
 # from pydub import AudioSegment
 
 # Ratio 440 Hz -> 432 Hz
-PITCH_RATIO = 432 / 440
+PITCH_RATIO_432 = 432 / 440
 
 # Rubberband semitone shift (negative)
 # A4 440 to 432 = about -0.316 semitones
@@ -65,7 +65,7 @@ def convert_audio_440_to_432(input_file, output_file):
 #Example usage:
 if __name__ == "__main__":
     input_path = input("Input file: ")                                  # C:\Music\440hz_geluid.mp3
-    output_path = input("Output file name (e.g., song_432.mp3): ")      # geluid_432Hz.mp3
+    output_path = input("Output file name (e.g., song_432.mp3): ")      # Geluid_432Hz.mp3
 
     convert_audio_440_to_432(input_path, output_path)
 
