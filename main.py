@@ -13,8 +13,10 @@ RUBBERBAND_PATH = r"C:\Gegevens Nino\rubberband\rubberband.exe"
 
 #Functies
 #   Sample analysis - 1
-def extract_sample(input_file, sample_file="temp_sample.wav", duration=3):
-    """Extract a short audio sample for analysis."""
+def extract_sample(input_file, duration=3):
+    """Extract a short audio sample for analysis with a unique temp file."""
+    base_name = os.path.splitext(os.path.basename(input_file))[0]
+    sample_file = f"temp_sample_{base_name}.wav"
     subprocess.run([
         FFMPEG_PATH, "-y",
         "-i", input_file,
@@ -80,7 +82,7 @@ def batch_convert_files(file_list, target_hz, output_folder):
         print(f"\nProcessing {file_path}")
 
         if not validate_audio_file(file_path):
-            print("Skipping invalid file.")
+            print(f"Skipping invalid file: {file_path}")
             continue
 
         sample_wav = extract_sample(file_path)
@@ -96,9 +98,10 @@ def batch_convert_files(file_list, target_hz, output_folder):
                 print("Skipping this file.")
                 continue
 
-        base_name = os.path.basename(file_path)
-        name, ext = os.path.splitext(base_name)
-        output_file = os.path.join(file_path, output_file, target_hz)
+        name, ext = os.path.splitext(os.path.basename(file_path))
+        output_file = os.path.join(output_folder, f"{name}_{target_hz}Hz{ext}")
+
+        convert_audio_440_to_target(file_path, output_file, target_hz)
 
 #   Bereken aantal semitonen
 def semitone_shift_for_target(target_hz, reference_hz=440.0):
@@ -144,71 +147,110 @@ def export_final(output_wav, output_file):
 def convert_audio_440_to_target(input_file, output_file, target_hz):
     print(f"Starting 440 Hz -> {target_hz} Hz conversion...")
 
-    temp_wav = "temp_input.wav"
-    shifted_wav = "temp_shifted.wav"
+    base_name = os.path.splitext(os.path.basename(input_file))[0]
 
-    # 1. Input naar WAV
-    convert_to_wav(input_file, temp_wav)
+    temp_wav = f"temp_{base_name}.wav"
+    shifted_wav = f"temp_{base_name}_shifted.wav"
 
-    # 2. Pitch shift
-    semitones = semitone_shift_for_target(target_hz)
-    pitch_shift_wav(temp_wav, shifted_wav, semitone_shift=semitones)
+    try:
+        # 1. Input naar WAV
+        convert_to_wav(input_file, temp_wav)
 
-    # 3. WAV naar eindbestand
-    export_final(shifted_wav, output_file)
+        # 2. Pitch shift
+        semitones = semitone_shift_for_target(target_hz)
+        pitch_shift_wav(temp_wav, shifted_wav, semitone_shift=semitones)
 
-    # 4. Opschonen
-    os.remove(temp_wav)
-    os.remove(shifted_wav)
+        # 3. WAV naar eindbestand
+        export_final(shifted_wav, output_file)
 
-    print("Done! Converted file saved as:", output_file)
+        print("Done! Converted file saved as:", output_file)
 
-# ------------------------
-#   Frequentie keuze
-# ------------------------
-print("\nChoose target tuning:")
-print("1 = 432 Hz")
-print("2 = 528 Hz")
-print("3 = Custom frequency")
+    finally:
+        # 4. Opschonen
+        os.remove(temp_wav)
+        os.remove(shifted_wav)
 
-choice = input("Your choice: ").strip()
-
-if choice == "1":
-    target_hz = 432
-elif choice == "2":
-    target_hz = 528
-elif choice == "3":
-    target_hz = float(input("Enter custom target frequency (Hz): "))
-else:
-    print("Invalid choice!")
-    exit()
 
 # -------------------------
 #   Startpunt
 # -------------------------
 if __name__ == "__main__":
-    input_path = input("Input file: ")                                  # C:\Music\440hz_geluid.mp3
+    # ------------------------
+    #   Frequentie keuze
+    # ------------------------
+    print("\nChoose target tuning:")
+    print("1 = 432 Hz")
+    print("2 = 528 Hz")
+    print("3 = Custom frequency")
 
-    if not validate_audio_file(input_path):
+    choice = input("Your choice: ").strip()
+
+    if choice == "1":
+        target_hz = 432
+    elif choice == "2":
+        target_hz = 528
+    elif choice == "3":
+        target_hz = float(input("Enter custom target frequency (Hz): "))
+    else:
+        print("Invalid choice!")
         exit()
 
-    output_path = input("Output file name (e.g., song_432.mp3): ")      # Geluid_432Hz.mp3  of  Geluid_528Hz.mp3
+    # ------------------------
+    #   Mode keuze
+    # ------------------------
+    mode = input("Single file or batch mode? (s/b): ").strip().lower()
 
+    #   Single Mode
+    if mode == "s":
+        input_path = input("Input file path to convert: ")              # C:\Music\440hz_geluid.mp3
 
-    sample_wav = extract_sample(input_path)
-    detected_hz = estimate_tuning(sample_wav)
-    os.remove(sample_wav)
-
-    print(f"Detected approximate tuning: {detected_hz:.2f} Hz")
-
-
-    if abs(detected_hz - target_hz) < 1.0:
-        print(f"⚠️ File is already close to target ({detected_hz:.2f} Hz ~ {target_hz} Hz).")
-        proceed = input("Do you still want to convert? (y/n): ").strip().lower()
-        if proceed != "y":
-            print("Conversion canceled.")
+        if not validate_audio_file(input_path):
             exit()
 
-    convert_audio_440_to_target(input_path, output_path, target_hz)
+        sample_wav = extract_sample(input_path)
+        detected_hz = estimate_tuning(sample_wav)
+        os.remove(sample_wav)
+
+        print(f"Detected approximate tuning: {detected_hz:.2f} Hz")
+
+        if abs(detected_hz - target_hz) < 1.0:
+            print(f"⚠️ File is already close to target ({detected_hz:.2f} Hz ~ {target_hz} Hz).")
+            proceed = input("Do you still want to convert? (y/n): ").strip().lower()
+            if proceed != "y":
+                print("Conversion canceled.")
+                exit()
+
+        output_path = input("Output file name (e.g., song_432.mp3): ")  # Geluid_432Hz.mp3  of  Geluid_528Hz.mp3
+        convert_audio_440_to_target(input_path, output_path, target_hz)
+        print("Done.")
+
+    #   Batch Mode
+    elif mode == "b":
+        folder_path = input("Enter folder path containing files to convert: ").strip()  # C:\
+        output_path = input("Enter folder name for converted files: ").strip()          # Folder_Geluiden_432Hz.mp3
+
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+
+        file_list = [
+            os.path.join(folder_path, f)
+            for f in os.listdir(folder_path)
+            if f.lower().endswith((".mp3", ".wav"))
+        ]
+
+        if not file_list:
+            print("No audio files found in folder.")
+            exit()
+
+        print(f"Found {len(file_list)} files. Starting batch conversion...")
+
+        batch_convert_files(file_list, target_hz, output_path)
+
+        print("Batch conversion complete.")
+
+    else:
+        print("Invalid mode.")
+        exit()
+
 
 
