@@ -63,6 +63,43 @@ def validate_audio_file(input_file):
     print("✔️ Audio file is valid.")
     return True
 
+#   Batch converting
+def batch_convert_files(file_list, target_hz, output_folder):
+    """
+    Convert multiple audio files to the target tuning.
+
+    Parameters:
+         file_list: list of file paths
+         target_hz: desired target frequency in Hz
+         output_folder: folder where converted files will be saved
+    """
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    for file_path in file_list:
+        print(f"\nProcessing {file_path}")
+
+        if not validate_audio_file(file_path):
+            print("Skipping invalid file.")
+            continue
+
+        sample_wav = extract_sample(file_path)
+        detected_hz = estimate_tuning(sample_wav)
+        os.remove(sample_wav)
+
+        print(f"Detected approximate tuning: {detected_hz:.2f} Hz")
+
+        if abs(detected_hz - target_hz) < 1.0:
+            print(f"⚠️ File is already close to target ({detected_hz:.2f} Hz ~ {target_hz} Hz).")
+            proceed = input("Do you still want to convert? (y/n): ").strip().lower()
+            if proceed != "y":
+                print("Skipping this file.")
+                continue
+
+        base_name = os.path.basename(file_path)
+        name, ext = os.path.splitext(base_name)
+        output_file = os.path.join(file_path, output_file, target_hz)
+
 #   Bereken aantal semitonen
 def semitone_shift_for_target(target_hz, reference_hz=440.0):
     ratio = target_hz / reference_hz
