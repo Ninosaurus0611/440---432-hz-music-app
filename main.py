@@ -202,7 +202,9 @@ if __name__ == "__main__":
     print("\nAllowed input formats:")
     print("1 = MP3 only")
     print("2 = WAV only")
-    print("3 = Both MP3 & WAV")
+    print("3 = FLAC only")
+    print("4 = MP3 & WAV")
+    print("5 = MP3, WAV & FLAC")
     fmt_choice = input("Your choice: ").strip()
 
     if fmt_choice == "1":
@@ -210,7 +212,11 @@ if __name__ == "__main__":
     elif fmt_choice == "2":
         allowed_inputs = (".wav",)
     elif fmt_choice == "3":
+        allowed_inputs = (".flac")
+    elif fmt_choice == "4":
         allowed_inputs = (".mp3", ".wav")
+    elif fmt_choice == "5":
+        allowed_inputs = (".mp3", ".wav", ".flac")
     else:
         print("Invalid choice!")
         exit()
@@ -218,12 +224,15 @@ if __name__ == "__main__":
     print("\nChoose output format:")
     print("1 = MP3")
     print("2 = WAV")
+    print("3 = FLAC")
     out_choice = input("Your choice: ").strip()
 
     if out_choice == "1":
         output_ext = ".mp3"
     elif out_choice == "2":
         output_ext = ".wav"
+    elif out_choice == "3":
+        output_ext = ".flac"
     else:
         print("Invalid choice!")
         exit()
