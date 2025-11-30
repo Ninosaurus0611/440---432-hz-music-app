@@ -66,7 +66,7 @@ def validate_audio_file(input_file):
     return True
 
 #   Batch converting
-def batch_convert_files(file_list, target_hz, output_folder):
+def batch_convert_files(file_list, target_hz, output_folder, output_ext):
     """
     Convert multiple audio files to the target tuning.
 
@@ -99,7 +99,7 @@ def batch_convert_files(file_list, target_hz, output_folder):
                 continue
 
         name, ext = os.path.splitext(os.path.basename(file_path))
-        output_file = os.path.join(output_folder, f"{name}_{target_hz}Hz{ext}")
+        output_file = os.path.join(output_folder, f"{name}_{target_hz}Hz{output_ext}")
 
         convert_audio_440_to_target(file_path, output_file, target_hz)
 
@@ -138,7 +138,7 @@ def export_final(output_wav, output_file):
     """Convert WAV back into chosen format using ffmpeg."""
     print("Exporting final file:", output_file)
     subprocess.run([
-        "ffmpeg", "-y",
+        FFMPEG_PATH, "-y",
         "-i", output_wav,
         output_file
     ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -167,8 +167,9 @@ def convert_audio_440_to_target(input_file, output_file, target_hz):
 
     finally:
         # 4. Opschonen
-        os.remove(temp_wav)
-        os.remove(shifted_wav)
+        for f in (temp_wav, shifted_wav):
+            if os.path.exists(f):
+                os.remove(f)
 
 
 # -------------------------
@@ -191,6 +192,38 @@ if __name__ == "__main__":
         target_hz = 528
     elif choice == "3":
         target_hz = float(input("Enter custom target frequency (Hz): "))
+    else:
+        print("Invalid choice!")
+        exit()
+
+    # ------------------------
+    #   Input/output format choice
+    # ------------------------
+    print("\nAllowed input formats:")
+    print("1 = MP3 only")
+    print("2 = WAV only")
+    print("3 = Both MP3 & WAV")
+    fmt_choice = input("Your choice: ").strip()
+
+    if fmt_choice == "1":
+        allowed_inputs = (".mp3",)
+    elif fmt_choice == "2":
+        allowed_inputs = (".wav",)
+    elif fmt_choice == "3":
+        allowed_inputs = (".mp3", ".wav")
+    else:
+        print("Invalid choice!")
+        exit()
+
+    print("\nChoose output format:")
+    print("1 = MP3")
+    print("2 = WAV")
+    out_choice = input("Your choice: ").strip()
+
+    if out_choice == "1":
+        output_ext = ".mp3"
+    elif out_choice == "2":
+        output_ext = ".wav"
     else:
         print("Invalid choice!")
         exit()
@@ -220,7 +253,9 @@ if __name__ == "__main__":
                 print("Conversion canceled.")
                 exit()
 
-        output_path = input("Output file name (e.g., song_432.mp3): ")  # Geluid_432Hz.mp3  of  Geluid_528Hz.mp3
+        name = input("Output file name (without extension): ").strip()  # Geluid_432Hz.mp3  of  Geluid_528Hz.mp3
+        output_path = name + output_ext
+
         convert_audio_440_to_target(input_path, output_path, target_hz)
         print("Done.")
 
@@ -235,7 +270,7 @@ if __name__ == "__main__":
         file_list = [
             os.path.join(folder_path, f)
             for f in os.listdir(folder_path)
-            if f.lower().endswith((".mp3", ".wav"))
+            if f.lower().endswith(allowed_inputs)
         ]
 
         if not file_list:
@@ -244,7 +279,7 @@ if __name__ == "__main__":
 
         print(f"Found {len(file_list)} files. Starting batch conversion...")
 
-        batch_convert_files(file_list, target_hz, output_path)
+        batch_convert_files(file_list, target_hz, output_path, output_ext)
 
         print("Batch conversion complete.")
 
