@@ -7,7 +7,7 @@ import numpy as np
 from scipy.io import wavfile
 # from pydub import AudioSegment
 
-#PATHS
+#Paths
 FFMPEG_PATH = r"C:\Gegevens Nino\ffmpeg\bin\ffmpeg.exe"
 RUBBERBAND_PATH = r"C:\Gegevens Nino\rubberband\rubberband.exe"
 
