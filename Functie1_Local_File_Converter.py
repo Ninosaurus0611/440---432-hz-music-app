@@ -5,11 +5,33 @@ import os
 import math
 import numpy as np
 from scipy.io import wavfile
+import sqlite3
+from datetime import datetime
 # from pydub import AudioSegment
 
 #Paths
 FFMPEG_PATH = r"C:\Gegevens Nino\ffmpeg\bin\ffmpeg.exe"
 RUBBERBAND_PATH = r"C:\Gegevens Nino\rubberband\rubberband.exe"
+DB_PATH = "audio_converter.db"
+
+def init_database()
+    """Create database & tables if not exist."""
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS converted_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        input_path TEXT,
+        output_path TEXT,
+        detected_hz REAL,
+        target_hz REAL,
+        timestamp TEXT 
+    )
+    """)
+
+conn.commit()
+conn.close()
 
 #Functies
 #   Sample analysis - 1
@@ -176,6 +198,18 @@ def convert_audio_440_to_target(input_file, output_file, target_hz):
 #   Startpunt
 # -------------------------
 if __name__ == "__main__":
+    # ------------------------
+    #   Database runnen
+    # ------------------------
+    init_database()
+
+    def save_conversion_to_db(input_path, output_path, detected_hz, target_hz):
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+
+        cur.execute("""
+        INSERT INTO converted_files (input_path, output_path, detected_hz, target_hz, timestamp) 
+        VALUES (?, ?, ?, ?, ?) 
     # ------------------------
     #   Frequentie keuze
     # ------------------------
