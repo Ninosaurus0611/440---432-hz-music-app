@@ -16,6 +16,21 @@ DB_PATH = "audio_converter.db"
 
 
 #Functies
+def run_subprocess(cmd, description="Processing"):
+    """Run a subprocess and handle errors gracefully."""
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ Error during {description}:")
+        print(e.stderr.decode('utf-8'))
+        return False
+
 def init_database():
     """Create database & tables if not exist."""
     conn = sqlite3.connect(DB_PATH)
@@ -104,6 +119,39 @@ Timestamp:   {row[5]}
 -----------------------------""")
             input("\nPress Enter to continue...")
 
+#   --------------------
+#   Quality functies
+#   --------------------
+
+#   Kwaliteit kiezen
+def choose_quality(output_format):
+    """
+    Biedt kwaliteitsopties aan en retourneert de ffmpeg-kwaliteit flags.
+    Default is altijd high quality.
+    """
+    if output_format == ".wav":
+        print("WAV is lossless. High quality wordt automatisch gebruikt.")
+        return []
+    elif output_format == ".flac":
+        print("\nChoose FLAC quality (compression level 0-8, default = 8):")
+        print("1 = Fast/low compression")
+        print("2 = Medium compression")
+        print("3 = High compression")
+        choice = input("Your choice (press Enter for default high quality): ").strip()
+        level_map = {"1": "0", "2": "5", "3": "8"}
+        level = level_map.get(choice, "8")
+        return ["-compression_level", level]
+    elif output_format == ".mp3":
+        print("\nChoose MP3 quality:")
+        print("1 = Low (128 kbps)")
+        print("2 = Medium (192 kbps)")
+        print("3 = High (320 kbps, default)")
+        choice = input("Your choice (press Enter for default high quality): ").strip()
+        bitrate_map = {"1": "128", "2": "192", "3": "320"}
+        bitrate = bitrate_map.get(choice, "320")
+        return ["-b:a", bitrate]
+    else:
+        return []
 
 #   --------------------
 #   Audio Functies
@@ -174,36 +222,40 @@ def semitone_shift_for_target(target_hz, reference_hz=440.0):
 def convert_to_wav(input_file, temp_wav="temp_input.wav"):
     """Convert any audio file to WAV using ffmpeg."""
     print("Converting input to WAV...")
-    subprocess.run([
+    cmd = [
         FFMPEG_PATH, "-y",
         "-i", input_file,
-        "-ac", "2",             # stereo
-        "-ar", "44100",         # sample rate
+        "-ac", "2",
+        "-ar", "44100",
         temp_wav
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    ]
+    if not run_subprocess(cmd, "WAV conversion"):
+        return None
     return temp_wav
 
 #   Stap 2: Pitch Shift met Rubberband
 def pitch_shift_wav(input_wav, output_wav="temp_shifted.wav", semitone_shift=0.0):
     """Pitch shift WAV using Rubberband CLI."""
     print(f"Applying pitch shift ({semitone_shift:+.6f} semitones)...")
-    subprocess.run([
-        RUBBERBAND_PATH,
-        "--pitch", str(semitone_shift),
-        input_wav,
-        output_wav
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    cmd = [
+        RUBBERBAND_PATH, "--pitch",
+        str(semitone_shift),
+        input_wav, output_wav
+    ]
+    if not run_subprocess(cmd, "pitch shift"):
+        return None
     return output_wav
 
 #   Stap 3: WAV -> eindformat
 def export_final(output_wav, output_file):
-    """Convert WAV back into chosen format using ffmpeg."""
+    """Convert WAV back into chosen format using ffmpeg with quality options."""
     print("Exporting final file:", output_file)
-    subprocess.run([
-        FFMPEG_PATH, "-y",
-        "-i", output_wav,
-        output_file
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    quality_flags = choose_quality(os.path.splitext(output_file)[1].lower())
+    cmd = [FFMPEG_PATH, "-y",
+           "-i", output_wav
+           ] + quality_flags + [output_file]
+    if not run_subprocess(cmd, "final export"):
+        print("⚠️ Export failed.")
 
 #   Full conversion pipeline
 def convert_audio_440_to_target(input_file, output_file, target_hz):
@@ -230,8 +282,11 @@ def convert_audio_440_to_target(input_file, output_file, target_hz):
     finally:
         # 4. Opschonen
         for f in (temp_wav, shifted_wav):
-            if os.path.exists(f):
-                os.remove(f)
+            try:
+                if f and os.path.exists(f):
+                    os.remove(f)
+            except:
+                pass
 
 #   Batch converting
 def batch_convert_files(file_list, target_hz, output_folder, output_ext):
@@ -256,7 +311,8 @@ def batch_convert_files(file_list, target_hz, output_folder, output_ext):
 
         sample_wav = extract_sample(file_path)
         detected_hz = estimate_tuning(sample_wav)
-        os.remove(sample_wav)
+        if os.path.exists(sample_wav):
+            os.remove(sample_wav)
 
         print(f"Detected approximate tuning: {detected_hz:.2f} Hz")
 
@@ -313,7 +369,7 @@ if __name__ == "__main__":
                 target_hz = 528
             elif choice == "3":
                 try:
-                    target_hz = float(input("Enter custom target frequency (Hz): "))
+                    target_hz = float(input("Enter custom target frequency (Hz): (20-20000 Hz "))
                 except ValueError:
                     print("Invalid input!")
                     continue
