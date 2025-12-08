@@ -369,7 +369,7 @@ if __name__ == "__main__":
                 target_hz = 528
             elif choice == "3":
                 try:
-                    target_hz = float(input("Enter custom target frequency (Hz): (20-20000 Hz "))
+                    target_hz = float(input("Enter custom target frequency (Hz): (20-20000 Hz) "))
                 except ValueError:
                     print("Invalid input!")
                     continue
