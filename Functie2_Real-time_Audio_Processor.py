@@ -14,6 +14,7 @@ running = False
 stream = None
 pitch_ratio = 432 / 440     # default 432
 latency_ms = 0
+blocksize = 256             # buffer size, kan 128/256/512 zijn
 
 
 #######################
@@ -26,22 +27,36 @@ def audio_callback(indata, outdata, frames, time_info, status):
     start = time.time()
 
     if status:
-        print("Status:", status)
+        print(status)
 
-    audio = indata[:, 0]
+    # stereo -> mono
+    audio = np.mean(indata, axis=1).astype(np.float32)
 
-    shifted = rb.pitch_shift(audio, 48000, pitch_ratio)
+    try:
+        shifted = rb.pitch_shift(audio, samplerate, pitch_ratio, rbargs=["--realtime"])
+    except Exception as e:
+        print("❌ Rubberband error:", e)
+        shifted = audio
 
-    # Match output size
-    if len(shifted) < len(outdata):
-        shifted = np.pad(shifted, (0, len(outdata) - len(shifted)))
-    else:
-        shifted = shifted[:len(outdata)]
+    # mono -> stereo
+    shifted = np.repeat(shifted[:, np.newaxis], 2, axis=1)
 
-    outdata[:] = shifted.reshape(-1, 1)
+    outdata[:] = shifted[:len(outdata)]
 
     # Latency measurement
     latency_ms = (time.time() - start) * 1000
+    # ⚠️ Echte system latency = callback latency + audio driver latency (+10-20ms)
+
+#####################
+# DEVICE HELPER
+#####################
+
+def find_device_index(name_substring):
+    """Return index of audio device containing given name substring."""
+    for idx, dev in enumerate(sd.query_devices()):
+        if name_substring.lower() in dev["name"].lower():
+            return idx
+    return None
 
 
 ######################
@@ -49,7 +64,7 @@ def audio_callback(indata, outdata, frames, time_info, status):
 ######################
 
 def start_processing():
-    global running, stream, pitch_ratio
+    global running, stream, pitch_ratio, blocksize
 
     if running:
         return
@@ -63,18 +78,47 @@ def start_processing():
     elif selection == "528 Hz":
         pitch_ratio = 528 / 440
     else:
-        pitch_ratio = float(custom_entry.get()) / 440
+        try:
+            pitch_ratio = float(custom_entry.get()) / 440
+        except ValueError:
+            status_label.config(text="❌ Invalid custom Hz")
+            running = False
+            return
+
+    input_idx = 17      # CABLE Output (VB-Audio Virtual Cable) WASAPI
+    output_idx = 16     # Speakers (Realtek) WASAPI
+
+    if input_idx is None or output_idx is None:
+        status_label.config(text="❌ Audio device is not found")
+        running = False
+        return
+
+    # Haal samplerates op en update globale variabele
+    global samplerate
+    input_info = sd.query_devices(input_idx)
+    output_info = sd.query_devices(output_idx)
+    samplerate = min(input_info["default_samplerate"], output_info["default_samplerate"])
 
     # Open audio stream
-    stream = sd.Stream(
-        device=(input_device_var.get(), output_device_var.get()),
-        samplerate=48000,
-        blocksize=1024,
-        channels=1,
-        dtype='float32',
-        callback=audio_callback
-    )
-    stream.start()
+    try:
+        stream = sd.Stream(
+            device=(input_idx, output_idx),
+            samplerate=samplerate,   # match je VB-Cable samplerate
+            blocksize=256,
+            channels=(1, 2), # input=1, output=2
+            dtype='float32',
+            callback=audio_callback,
+        )
+        stream.start()
+    except Exception as e:
+        status_label.config(text=f"❌ Stream error: {e}")
+        running = False
+        return
+
+    # Disable controls tijdens DSP
+    tuning_choice.config(state="disabled")
+    custom_entry.config(state="disabled")
+
     status_label.config(text="🎵 Active (Processing)")
 
 def stop_processing():
@@ -82,9 +126,16 @@ def stop_processing():
     running = False
 
     if stream:
-        stream.stop()
-        stream.close()
+        try:
+            stream.stop()
+            stream.close()
+        except Exception as e:
+            print("❌ Error closing stream:", e)
         stream = None
+
+    # Enable controls na stop
+    tuning_choice.config(state="normal")
+    custom_entry.config(state="normal")
 
     status_label.config(text="⛔ Stopped")
 
@@ -97,37 +148,33 @@ def update_latency_label():
     latency_label.config(text=f"Latency: {latency_ms:.1f} ms")
     root.after(100, update_latency_label)
 
+def toggle_dsp():
+    if running:
+        stop_processing()
+        toggle_btn.config(text="▶ Enable DSP")
+    else:
+        start_processing()
+        toggle_btn.config(text="⏹ Disable DSP")
 
 #######################
 # GUI SETUP
 #######################
 
 root = tk.Tk()
+root.configure(bg="#1e1e1e")
+
+style = ttk.Style()
+style.theme_use("clam")
+style.configure("TLabel", background="#1e1e1e", foreground="white")
+style.configure("TCombobox", fieldbackground="#2b2b2b", foreground="white")
+
 root.title("Real-Time Pitch Shift DSP (432 / 528 / Custom)")
 root.geometry("480x400")
 root.resizable(False, False)
 
-#######################
-# Device Selector
-#######################
-tk.Label(root, text="Input Device (Virtual Cable):").pack(pady=5)
 
-input_devices = [d['name'] for d in sd.query_devices()]
-output_devices = input_devices.copy()
-
-input_device_var = tk.StringVar()
-output_device_var = tk.StringVar()
-
-input_dropdown = ttk.Combobox(root, textvariable=input_device_var, values=input_devices, width=50)
-output_dropdown = ttk.Combobox(root, textvariable=output_device_var, values=output_devices, width=50)
-
-input_dropdown.pack(pady=2)
-output_dropdown.pack(pady=2)
-
-########################
 # Tuning selector
-########################
-tk.Label(root, text="Tuning Mode:").pack(pady=10)
+tk.Label(root, text="Tuning Mode:", bg="#1e1e1e", fg="white").pack(pady=10)
 
 tuning_choice = ttk.Combobox(root, values=["432 Hz", "528 Hz", "Custom"], width=20)
 tuning_choice.set("432 Hz")
@@ -137,20 +184,19 @@ custom_entry = tk.Entry(root)
 custom_entry.insert(0, "440") # default
 custom_entry.pack(pady=5)
 
-######################
-# Buttons
-######################
+# Toggle DSP button
+toggle_btn = tk.Button(
+    root,
+    text="▶ Enable DSP",
+    command=toggle_dsp,
+    font=("Arial", 14),
+    bg="#2196F3",
+    fg="white",
+    width=20,
+)
+toggle_btn.pack(pady=20)
 
-start_btn = tk.Button(root, text="Start DSP", command=start_processing, bg="#4CAF50", fg="white")
-start_btn.pack(pady=10)
-
-stop_btn = tk.Button(root, text="Stop DSP", command=stop_processing, bg="#F44336", fg="white")
-stop_btn.pack(pady=5)
-
-######################
 # Status + Latency
-######################
-
 status_label = tk.Label(root, text="⛔ Stopped", font=("Arial", 14))
 status_label.pack(pady=10)
 
